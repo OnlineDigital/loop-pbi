@@ -40,13 +40,14 @@ bun scripts/loop-pbi.ts scan --root /path/to/project
 bun scripts/loop-pbi.ts ready --root /path/to/project
 bun scripts/loop-pbi.ts validate --root /path/to/project
 bun scripts/loop-pbi.ts claim 023 --agent vehicles-lite-01 --root /path/to/project
-bun scripts/loop-pbi.ts finish 023 --evidence evidence/023.json --root /path/to/project
+bun scripts/loop-pbi.ts finish 023 --evidence evidence/023.json --root /path/to/project --allow-project-commands
 bun scripts/loop-pbi.ts worktree create vehicles-lite-01 --root /path/to/project
 bun scripts/loop-pbi.ts history 023 --root /path/to/project
 ```
 
 - `claim` assigns ownership and physically moves To Do → In Progress.
 - `finish` executes evidence checks and project validators, moves the task to Done, and rolls back the lifecycle transition if final validation fails.
+- Project-defined commands are disabled by default. Review configuration/evidence commands and their scripts before passing `--allow-project-commands`; the flag is an execution opt-in, not a sandbox. Internal board validation needs no external script or PowerShell.
 - Worktrees live under `.worktrees/<assignment>`, with `.worktrees/*` added to `.gitignore`.
 - The orchestrator cleans up each completed delegation after integration, required push, and agent shutdown. The CLI refuses dirty or unintegrated worktree removal; branch deletion uses ordinary `git branch -d`.
 - Git trailers make each PBI searchable without a duplicate changelog database.
@@ -63,7 +64,7 @@ An orchestration runtime must support the chosen provider/model. T3-specific gui
 bun test scripts/loop-pbi.test.ts
 ```
 
-Tests use isolated temporary repositories, covering dependency validation, concurrent claims, physical transitions, failed-validation rollback, shared worktrees for multiple PBIs, and cleanup protections.
+Tests use isolated temporary repositories, covering dependency validation, concurrent claims, physical transitions, failed-validation rollback, shared worktrees for multiple PBIs, cleanup protections, and refusal to execute project commands without explicit opt-in.
 
 ## Discoverability on skills.sh
 

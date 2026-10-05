@@ -82,7 +82,7 @@ function update(text: string, values: Record<string, string | null>) {
 class Board {
   root: string; board: string; paths: Record<Column, string>; statuses: Record<Column, string>;
   config: Config; fields: typeof fields;
-  constructor(root: string, config: Config, boardOverride?: string) {
+  constructor(root: string, config: Config, boardOverride?: string, public allowProjectCommands = false) {
     this.root = root; this.config = config; this.fields = { ...fields, ...config.fields };
     let board = boardOverride || config.board;
     if (!board) {
@@ -149,16 +149,11 @@ class Board {
   valid() { const result = this.validate(); if (result.errors.length) fail(result.errors.join('\n')); return result.tasks; }
   task(id: string) { const t = this.valid().find(t => t.id === id); return t || fail(`Unknown ID: ${id}`); }
   commands(commands: string[][] | undefined, id = '', file = '') {
+    if (commands?.length && !this.allowProjectCommands) fail('Project-defined commands are disabled. Review all configuration/evidence commands, then explicitly pass --allow-project-commands.');
     return (commands || []).map(argv => run(this.root, argv.map(s => s.replaceAll('{id}', id).replaceAll('{file}', file))));
   }
   external(id = '', file = '', done = false) {
     const results = this.commands(this.config.validate, id, file);
-    const local = join(this.board, 'Validate-Board.ps1');
-    if (!this.config.validate && existsSync(local)) {
-      const shell = Bun.which('pwsh') || (process.platform === 'win32' ? Bun.which('powershell') : null);
-      if (!shell) fail('Validate-Board.ps1 exists but no PowerShell is installed; configure an equivalent validator explicitly');
-      results.push(run(this.root, [shell, '-NoProfile', '-File', local, ...(done ? ['-RequireDone', id] : [])]));
-    }
     if (done) results.push(...this.commands(this.config.requireDone, id, file));
     return results;
   }
@@ -197,12 +192,12 @@ function parse(argv: string[]) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith('--')) {
       const key = argv[i].slice(2);
-      if (key === 'help') { opts[key] = 'true'; continue; }
+      if (key === 'help' || key === 'allow-project-commands') { opts[key] = 'true'; continue; }
       if (!argv[i + 1] || argv[i + 1].startsWith('--')) fail(`Missing value for --${key}`);
       if (opts[key]) fail(`Repeated option --${key}`); opts[key] = argv[++i];
     } else args.push(argv[i]);
   }
-  const known = ['root', 'config', 'board', 'agent', 'evidence', 'base', 'limit', 'help'];
+  const known = ['root', 'config', 'board', 'agent', 'evidence', 'base', 'limit', 'help', 'allow-project-commands'];
   for (const key of Object.keys(opts)) if (!known.includes(key)) fail(`Unknown option --${key}`);
   return { opts, args };
 }
@@ -212,6 +207,7 @@ Read-only: scan | ready | validate | history [ID] [--limit 50] | worktree list
 Mutations: claim ID --agent NAME | finish ID --evidence JSON_FILE
            worktree create ASSIGNMENT [--base COMMIT] | worktree remove ASSIGNMENT
 Config: optional PROJECT/.loop-pbi.json. See references/cli.md.
+Project-defined commands require review and explicit --allow-project-commands; no validator scripts are autodetected.
 claim = reservation + metadata + physical To Do -> In Progress (no separate claim database).
 finish executes evidence checks and project validators, then moves physically to Done.
 worktree create uses .worktrees/ASSIGNMENT for one agent with one or more PBIs, from committed HEAD.
@@ -291,7 +287,7 @@ export function main(argv: string[]) {
     }
     fail('Use worktree create ASSIGNMENT, list, or remove ASSIGNMENT');
   }
-  const board = new Board(root, config, opts.board);
+  const board = new Board(root, config, opts.board, opts['allow-project-commands'] === 'true');
   if (command === 'scan') return { root, board: board.board, columns: board.paths, ...board.validate() };
   if (command === 'validate') {
     const tasks = board.valid(); const checks = board.external(); return { valid: true, count: tasks.length, checks };
@@ -315,7 +311,7 @@ export function main(argv: string[]) {
     if (evidence.id !== id || evidence.criteriaSatisfied !== true || typeof evidence.result !== 'string' || !evidence.result.trim() ||
         typeof evidence.limitations !== 'string' || !evidence.limitations.trim() || !Array.isArray(evidence.checks) || !evidence.checks.length)
       fail('Evidence requires matching id, criteriaSatisfied:true, result, limitations, nonempty checks (argv arrays)');
-    const checks = evidence.checks.map((argv: string[]) => run(root, argv));
+    const checks = board.commands(evidence.checks, id, t.file);
     return board.transition(id, 'done', { [board.fields.completed]: new Date().toISOString() }, file => {
       const after = board.commands(config.afterMove, id, file);
       board.valid(); return { evidence: evidenceFile, checks, afterMove: after, validators: board.external(id, file, true) };

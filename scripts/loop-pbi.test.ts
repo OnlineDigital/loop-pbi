@@ -6,7 +6,8 @@ import { main } from './loop-pbi';
 
 const roots: string[] = [];
 const bin = process.execPath;
-const call = (root: string, ...args: string[]) => main([...args, '--root', root]) as any;
+// Fixture commands are authored by this test suite and explicitly trusted here.
+const call = (root: string, ...args: string[]) => main([...args, '--root', root, '--allow-project-commands']) as any;
 function fixture(names = ['todo', 'in-progress', 'done']) {
   const root = mkdtempSync(join(tmpdir(), 'loop-pbi-test-')); roots.push(root);
   const board = join(root, 'pbis');
@@ -186,4 +187,31 @@ test('old pbi-ID worktrees remain removable after upgrade without creating dupli
   git(f.root, 'worktree', 'add', '-b', 'loop-pbi/001', old);
   expect(() => call(f.root, 'worktree', 'create', '001')).toThrow('Legacy worktree already exists');
   call(f.root, 'worktree', 'remove', '001'); expect(existsSync(old)).toBe(false);
+});
+
+test('project configuration and evidence cannot execute commands without explicit opt-in', () => {
+  const f = fixture(); task(f, '001');
+  const sentinel = join(f.root, 'executed.txt');
+  const check = [bin, '-e', 'require("node:fs").writeFileSync("executed.txt", "executed")'];
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ validate: [check] }));
+  expect(() => main(['validate', '--root', f.root])).toThrow('Project-defined commands are disabled');
+  expect(existsSync(sentinel)).toBe(false);
+  expect(() => main(['claim', '001', '--agent', 'a', '--root', f.root])).toThrow('Project-defined commands are disabled');
+  expect(call(f.root, 'scan').tasks[0].column).toBe('todo');
+  rmSync(join(f.root, '.loop-pbi.json'));
+  call(f.root, 'claim', '001', '--agent', 'a');
+  const receipt = evidence(f.root, '001');
+  const data = JSON.parse(readFileSync(receipt, 'utf8')); data.checks = [check]; writeFileSync(receipt, JSON.stringify(data));
+  expect(() => main(['finish', '001', '--evidence', receipt, '--root', f.root])).toThrow('Project-defined commands are disabled');
+  expect(existsSync(sentinel)).toBe(false);
+  expect(call(f.root, 'scan').tasks[0].column).toBe('progress');
+  call(f.root, 'finish', '001', '--evidence', receipt);
+  expect(readFileSync(sentinel, 'utf8')).toBe('executed');
+});
+
+test('unconfigured executable files in the board are not automatically run', () => {
+  const f = fixture(); task(f, '001');
+  writeFileSync(join(f.board, 'unexpected-validator.ps1'), 'throw "Never execute this file automatically"');
+  writeFileSync(join(f.board, 'unexpected-validator.sh'), 'exit 99');
+  expect((main(['validate', '--root', f.root]) as any).checks).toEqual([]);
 });
