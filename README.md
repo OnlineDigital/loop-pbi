@@ -16,7 +16,7 @@ For Codex, installed globally:
 npx skills add onlinedigital/loop-pbi --skill loop-pbi --agent codex --global
 ```
 
-The orchestration instructions are written in Romanian. The CLI help and machine-readable results are in English/JSON.
+All orchestration instructions, reference documentation, examples, script comments, and CLI messages are in English. Machine-readable results use JSON.
 
 ## Use
 

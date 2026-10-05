@@ -1,4 +1,4 @@
 interface:
   display_name: "Loop PBI"
-  short_description: "Implementeaza backlogul continuu cu subagenti"
-  default_prompt: "Foloseste $loop-pbi pentru a implementa continuu PBI-urile eligibile pana sunt toate in Done, cu subagenti Codex 6.1-Sol, reasoning medium, commit si push dupa fiecare task."
+  short_description: "Continuously implement a backlog with subagents"
+  default_prompt: "Use $loop-pbi to continuously implement eligible PBIs until all are in Done, with Codex 6.1-Sol subagents, medium reasoning, and commit/push after each task."

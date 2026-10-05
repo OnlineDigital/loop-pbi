@@ -1,10 +1,10 @@
-# Git ca evidenta a livrarilor
+# Git as a delivery record
 
-Foloseste Git ca istoric durabil al schimbarilor livrate. Nu crea implicit CHANGELOG.md sau un jurnal concurent duplicat. Blocajele si presupunerile inca necomise raman in PBI/evidenta orchestratorului; Git nu inlocuieste boardul, CI-ul sau starea task-urilor active. Daca proiectul cere changelog de release, genereaza-l din intervalul relevant de commituri si editeaza-l pentru publicul tinta.
+Use Git as the durable history of delivered changes. Do not create CHANGELOG.md or a concurrently edited duplicate journal by default. Uncommitted blockers and assumptions remain in the PBI/orchestrator's working record; Git does not replace the board, CI, or active-task state. If the project requires a release changelog, generate it from the relevant commit range and edit it for the intended audience.
 
-## Commituri cautabile
+## Searchable commits
 
-Respecta conventia proiectului pentru subject. Foloseste un rezultat concret: `feat(vehicles): add differentiated vehicle classes [PBI 023]`. Corpul explica problema, comportamentul rezultat, deciziile semnificative si verificarile reale. Include trailers simple, pe linii separate:
+Follow the project's subject convention. Describe a concrete result: `feat(vehicles): add differentiated vehicle classes [PBI 023]`. The body explains the problem, resulting behavior, significant decisions, and actual checks. Include simple trailers on separate lines:
 
 ```text
 PBI: 023
@@ -14,28 +14,28 @@ PBI-Evidence: Docs/Evidence/023/results.json
 PBI-Limitations: none
 ```
 
-Pentru commitul copilului foloseste `PBI-Phase: implementation`; commitul parintelui care include Done foloseste `integration`. Un task poate avea mai multe commituri; nu fabrica relatia 1 PBI = exact 1 commit. Pentru un commit care acopera in mod justificat mai multe PBI-uri, repeta trailerul `PBI: ID` pentru fiecare.
+Use `PBI-Phase: implementation` for a child's commit; the parent's commit including Done uses `integration`. A task may have several commits; do not manufacture a one-PBI-to-one-commit relationship. For a commit that legitimately covers multiple PBIs, repeat `PBI: ID` for each.
 
-Comenzile si limitarile din commit trebuie sa fie adevarate la acel commit. Nu copia rezultat PASS dinainte de modificari incompatibile. Evidentele relevante sunt fisiere versionate, cu cai relative, fara secrete, credentials sau cai de masina inutile. Nu include propriul hash in commit: hashul se obtine dupa creare. Foloseste fisier temporar pentru mesaj si `git commit -F <file>`, pentru a evita escaping fragil.
+Commands and limitations in a commit must be true at that commit. Do not reuse PASS results from before incompatible changes. Relevant evidence belongs in versioned files with relative paths, without secrets, credentials, or unnecessary machine-specific paths. Do not include the commit's own hash in its message: obtain it after creation. Use a temporary message file and `git commit -F <file>` to avoid fragile escaping.
 
-## Investigare inainte de implementare
+## Investigation before implementation
 
-- `git status --short` si `git diff`: separa munca deja existenta de scope-ul nou.
-- `git log -n 20 -- <paths>`: afla contractele si deciziile recente ale modulului.
-- `git show <commit> -- <paths>`: citeste schimbarea concreta, nu doar mesajul.
-- `git blame -L <start>,<end> -- <file>`: identifica provenienta unui contract; apoi citeste commitul si contextul. Blame nu dovedeste cauza unui bug.
-- `git log -S <text> -- <paths>` sau `git log -G <pattern> -- <paths>`: cauta introducerea/eliminarea unei reguli sau schimbari de cod.
-- `git log --all --fixed-strings --grep="PBI: 023"`: include si branchuri de agent pentru investigare. Prezenta pe un branch copil nu dovedeste integrarea sau push-ul.
+- `git status --short` and `git diff`: separate existing work from new scope.
+- `git log -n 20 -- <paths>`: find recent module contracts and decisions.
+- `git show <commit> -- <paths>`: read the actual change, not just its message.
+- `git blame -L <start>,<end> -- <file>`: identify a contract's provenance, then read the commit and context. Blame does not prove a bug's cause.
+- `git log -S <text> -- <paths>` or `git log -G <pattern> -- <paths>`: find the introduction/removal of a rule or code changes.
+- `git log --all --fixed-strings --grep="PBI: 023"`: include agent branches in investigation. Presence on a child's branch does not prove integration or push.
 
-Foloseste aceste cautari cand istoricul poate raspunde unei nelamuriri, inainte de a cere utilizatorului explicatii deja consemnate. Nu presupune ca o decizie istorica are prioritate fata de cerintele actuale.
+Use these searches when history may resolve an uncertainty before asking the user to explain decisions already recorded. Historical decisions do not override current requirements.
 
-## Stage, commit si push
+## Stage, commit, and push
 
-1. In checkout comun, verifica indexul inainte de stage. Nu include fisiere deja staged de altcineva. Daca ownership-ul staged nu poate fi stabilit, serializeaza integrarea si rezolva explicit, fara reset automat.
-2. Stage-uieste numai pathurile exacte ale PBI-ului, inclusiv stergerea sursei si adaugarea destinatiei mutarii. Inspecteaza `git diff --cached --stat` si `git diff --cached`; commitul nu trebuie sa includa alt task neterminat.
-3. Executa commitul cu hook-urile active. Dupa commit verifica `git show --stat HEAD` si hashul real. Un commit al copilului nu este dovada finalizarii boardului canonic.
-4. Verifica branchul, remote-ul, upstream-ul si modificarile upstream necesare. Foloseste `git fetch <remote>` cand ai nevoie de starea curenta; erorile de retea primesc retry limitat, nu bucla infinita.
-5. Push pe destinatia stabilita. Pentru non-fast-forward, inspecteaza divergenta si integreaza conform regulilor proiectului; nu folosi force-push sau rebase automat peste commituri publicate. Munca activa/murdara a colegilor poate impune integrare seriala.
-6. La reluare, verifica daca hashul de integrare este deja stramos al HEAD si al remote-tracking ref proaspat actualizat. `git merge-base --is-ancestor <hash> <ref>` este verificarea; hashuri diferite intre HEAD si upstream nu implica singure un push lipsa. `git log <upstream>..HEAD` arata commiturile locale nelivrate pe acel upstream.
+1. In a shared checkout, inspect the index before staging. Do not include files already staged by someone else. If staged ownership is unclear, serialize integration and resolve it explicitly without automatic reset.
+2. Stage only exact PBI paths, including deletion of the source and addition of the move destination. Inspect `git diff --cached --stat` and `git diff --cached`; the commit must not contain another unfinished task.
+3. Commit with hooks enabled. Afterward, verify `git show --stat HEAD` and the actual hash. A child's commit is not evidence of canonical board completion.
+4. Check the branch, remote, upstream, and necessary upstream changes. Use `git fetch <remote>` when current remote state is needed; network errors receive bounded retries, not an infinite loop.
+5. Push to the established destination. For a non-fast-forward rejection, inspect divergence and integrate according to project rules; do not force-push or automatically rebase published commits. Teammates' active/dirty work may require serial integration.
+6. On resumption, verify whether the integration hash is already an ancestor of HEAD and the freshly updated remote-tracking ref. Use `git merge-base --is-ancestor <hash> <ref>`; different HEAD/upstream hashes do not alone imply a missing push. `git log <upstream>..HEAD` shows local commits not delivered to that upstream.
 
-Done validat local si push reusit sunt doua stari distincte. Daca publicarea esueaza, pastreaza hashul si destinatia, reincearca publicarea acelui rezultat, fara commit duplicat. Un push reusit nu dovedeste trecerea verificarilor CI.
+Locally validated Done and successful push are distinct states. If publication fails, retain the hash and destination and retry publication of that result without creating a duplicate commit. Successful push does not prove CI checks passed.

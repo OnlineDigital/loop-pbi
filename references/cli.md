@@ -1,29 +1,29 @@
-# CLI Bun pentru Loop PBI
+# Bun CLI for Loop PBI
 
-Citeste aceasta referinta cand folosesti helperul. Necesita Bun; worktree/history necesita si Git. Nu instaleaza pachete npm si nu depinde de Bun Shell sau de un shell particular. Executa procese cu argv arrays si cwd explicit, identic pe Windows/Linux/macOS. Validatorii proiectului pot avea propriile cerinte, de exemplu PowerShell pentru `.ps1`.
+Read this reference when using the helper. Bun is required; worktree/history commands also require Git. The helper installs no npm packages and does not depend on Bun Shell or any particular shell. It launches processes with argument arrays and explicit cwd on Windows/Linux/macOS. Project validators may have their own requirements, such as PowerShell for `.ps1` files.
 
-Helperul este `../scripts/loop-pbi.ts`, relativ la acest fisier. Ruleaza:
+The helper is `../scripts/loop-pbi.ts`, relative to this file. Run:
 
 ```text
 bun "<skill>/scripts/loop-pbi.ts" --help
-bun "<skill>/scripts/loop-pbi.ts" scan --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" ready --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" validate --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" claim 023 --agent "agent-023" --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" finish 023 --evidence "evidence/023.json" --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" worktree create vehicles-lite-01 --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" worktree list --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" worktree remove vehicles-lite-01 --root "<proiect>"
-bun "<skill>/scripts/loop-pbi.ts" history 023 --root "<proiect>"
+bun "<skill>/scripts/loop-pbi.ts" scan --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" ready --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" validate --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" claim 023 --agent "agent-023" --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" finish 023 --evidence "evidence/023.json" --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" worktree create vehicles-lite-01 --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" worktree list --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" worktree remove vehicles-lite-01 --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" history 023 --root "<project>"
 ```
 
-Outputul este JSON; erorile au exit code 1. `scan` raporteaza si erorile fara sa execute validatorii; `ready` refuza boardul inconsistent. `validate` executa si validatorii proiectului. Nicio comanda nu stage-uieste, comite sau publica automat modificari.
+Output is JSON; errors have exit code 1. `scan` reports errors without running validators; `ready` rejects an inconsistent board. `validate` also runs project validators. No command automatically stages, commits, or publishes changes.
 
-## Descoperire si configurare
+## Discovery and configuration
 
-CLI-ul descopera un singur board cu coloane echivalente `To Do`, `In Progress`, `Done`, ignorand diferente de case, spatii, underscore si cratime. Cauta pana la sase niveluri de directoare, fara directoare ascunse (de exemplu copii `.pbi-validation-*`), dependente si builduri. Pentru boarduri multiple, ascunse, mai adanci sau cu nume diferite, foloseste `--board` sau configura explicit.
+The CLI discovers a single board with columns equivalent to `To Do`, `In Progress`, and `Done`, ignoring differences in case, spaces, underscores, and hyphens. It searches up to six directory levels, excluding hidden directories (such as `.pbi-validation-*` copies), dependencies, and build outputs. For multiple, hidden, deeper, or differently named boards, use `--board` or explicit configuration.
 
-Configuratia optionala este `<proiect>/.loop-pbi.json`, sau un fisier dat prin `--config`, aflat in proiect. Creeaz-o numai cand descoperirea/schema implicita nu este suficienta; nu impune configuratie tuturor proiectelor.
+Optional configuration lives at `<project>/.loop-pbi.json`, or at a project-local file supplied through `--config`. Create it only when default discovery/schema support is insufficient; do not impose configuration on every project.
 
 ```json
 {
@@ -39,69 +39,69 @@ Configuratia optionala este `<proiect>/.loop-pbi.json`, sau un fisier dat prin `
 }
 ```
 
-Foloseste comenzile reale ale proiectului; exemplul nu creeaza scripturile indicate. Caile coloanelor sunt relative la board; boardul este relativ la proiect. Statusurile implicite sunt numele folderelor. Fiecare comanda este un array de argumente, fara shell interpolation; `{id}` si `{file}` sunt substituite ca valori de argumente. Cwd-ul validatorilor si verificarilor este radacina proiectului.
+Use actual project commands; the example does not create the named scripts. Column paths are relative to the board; the board is relative to the project. Default statuses are directory names. Each command is an argument array without shell interpolation; `{id}` and `{file}` are substituted as argument values. Validators and checks run with the project root as cwd.
 
-Daca exista `<board>/Validate-Board.ps1` si `validate` nu este configurat, ruleaza validatorul cu PowerShell, inclusiv `-RequireDone ID` dupa finish. Aceasta este conventia cunoscuta a acestui validator; daca alt proiect are alt contract, configureaza-l explicit. `validate` custom inlocuieste autodetectarea: include toate gate-urile locale obligatorii si nu folosi `[]` ca bypass. Alte scripturi, precum Validate-Plan, se adauga in configuratie sau se ruleaza separat conform instructiunilor locale.
+If `<board>/Validate-Board.ps1` exists and `validate` is not configured, run it through PowerShell, including `-RequireDone ID` after finish. This is that validator's known convention; configure another project's different contract explicitly. Custom `validate` replaces autodetection: include every mandatory local gate and never use `[]` as a bypass. Add other scripts, such as Validate-Plan, to configuration or run them separately according to local instructions.
 
-Parserul fara dependinte suporta Markdown cu frontmatter YAML, scalari simpli/quoted si dependinte ca array inline (`["001", "009"]` sau `[]`). Nu este parser YAML general: refuza sintaxe necunoscute in campurile operationale, in loc sa considere task-ul fara dependinte. Pentru dependinte block-style sau declarate in text, citeste contractul proiectului si foloseste override-uri explicite:
+The dependency-free parser supports Markdown with YAML frontmatter, simple/quoted scalars, and inline dependency arrays (`["001", "009"]` or `[]`). It is not a general YAML parser: it rejects unknown syntax in operational fields rather than treating a task as dependency-free. For block-style dependencies or dependencies declared in prose, read the project's contract and provide explicit overrides:
 
 ```json
 { "dependencies": { "023": ["022", "009"], "044": [] } }
 ```
 
-Pentru formate care nu au frontmatter, adapteaza helperul/schema explicit; nu rescrie boardul intreg doar pentru a se potrivi CLI-ului. Descoperirea documentatiei si interpretarea criteriilor raman responsabilitatea agentului.
+For formats without frontmatter, adapt the helper/schema explicitly; do not rewrite the entire board just to fit the CLI. Documentation discovery and criteria interpretation remain the agent's responsibility.
 
-## Claim si finish
+## Claim and finish
 
-`claim` este chiar tranzitia To Do -> In Progress, nu o rezervare separata. Verifica dependintele in Done, scrie owner/started_at/status/completed_at si muta acelasi fisier. Un lock temporar per board serializeaza tranzitiile, pentru cazul accidental in care doua procese incearca acelasi claim. Task-urile deja In Progress nu sunt reasignate automat.
+`claim` is the To Do -> In Progress transition, not a separate reservation. It checks dependencies in Done, writes owner/started_at/status/completed_at, and moves the same file. A temporary board-level lock serializes transitions in case two processes accidentally attempt the same claim. Tasks already In Progress are not automatically reassigned.
 
-Lockul `.loop-pbi-lock/owner.json` contine PID si ora. Dupa un crash poate ramane lockul sau o tranzitie partiala; inspecteaza procesele, subagentii, fisierul real si metadatele inainte de recuperare. Nu sterge lockuri active pe baza unui timeout arbitrar. CLI-ul nu incearca reparatii automate ale starii partiale.
+The `.loop-pbi-lock/owner.json` lock records PID and time. A crash may leave the lock or a partial transition; inspect processes, subagents, the actual file, and metadata before recovery. Do not delete active locks based on an arbitrary timeout. The CLI does not automatically repair partial state.
 
-`finish` necesita un fisier JSON de dovezi existent in proiect:
+`finish` requires an existing project-local evidence JSON file:
 
 ```json
 {
   "id": "023",
   "criteriaSatisfied": true,
-  "result": "Catalogul mecanic si integrarea sunt implementate; vezi dovada detaliata din PBI.",
-  "limitations": "Niciuna",
+  "result": "The mechanical catalog and integration are implemented; see detailed evidence in the PBI.",
+  "limitations": "None",
   "checks": [["bun", "test", "tests/vehicles"]]
 }
 ```
 
-`criteriaSatisfied` este asumarea agentului dupa review, nu o verificare semantica automata. CLI-ul executa efectiv comenzile din `checks`; exit code diferit de zero blocheaza mutarea. Completeaza mai intai criteriile si dovezile in PBI conform regulilor locale si leaga acest fisier JSON/dovezile detaliate. Verificarile vizuale/hardware nu sunt inlocuite de exit code-ul unui script generic. CLI-ul nu bifeaza automat criteriile si nu fabrica dovezi.
+`criteriaSatisfied` is the agent's assertion after review, not an automated semantic check. The CLI actually executes `checks` commands; nonzero exit codes block the move. First complete criteria and evidence in the PBI according to local rules and link this JSON file/detailed evidence. A generic script's exit code does not replace visual/hardware verification. The CLI does not automatically check off criteria or fabricate evidence.
 
-Dupa mutare ruleaza verificarea interna, `afterMove` optional, apoi validatorii finali. `afterMove` contine comenzi locale existente pentru completarea checklistului care trebuie bifat strict dupa mutare, daca proiectul cere asta. Nu configura o comanda care bifeaza criterii de implementare neverificate. Daca verificarea post-mutare esueaza, fisierul revine In Progress cu metadatele anterioare; modificarile din corp/dovezile noi sunt pastrate. Efectele externe ale scripturilor nu sunt anulate de rollback; validatorii ar trebui sa fie read-only.
+After moving the file, it runs internal validation, optional `afterMove` commands, then final validators. `afterMove` contains existing local commands for checklist items that must be checked strictly after the move, when the project requires that. Do not configure a command that checks off unverified implementation criteria. If post-move verification fails, the file returns to In Progress with its previous metadata; body changes/new evidence are preserved. Rollback does not undo external script effects; validators should be read-only.
 
-## Worktree-uri in proiect
+## Project-local worktrees
 
-`worktree create ASSIGNMENT` creeaza branchul `loop-pbi/ASSIGNMENT` si checkout-ul `<proiect>/.worktrees/ASSIGNMENT`, pornind din HEAD comis sau `--base COMMIT`. ASSIGNMENT este un nume unic al delegarii, precum `vehicles-lite-01`, nu ID-ul unui PBI. Acelasi subagent poate lucra 2-4 PBI-uri similare si usoare in acelasi worktree; CLI-ul nu limiteaza grupul la un singur PBI. Orchestratorul pastreaza lista IDs si ownership-ul, face claim/finish individual si respecta dependintele canonice. Un singur agent detine checkout-ul grupului. Adauga idempotent `.worktrees/*` in `.gitignore` si verifica ignorarea. Nu comite acea modificare automat; orchestratorul o include explicit intr-un commit de infrastructura sau in primul commit PBI potrivit.
+`worktree create ASSIGNMENT` creates the `loop-pbi/ASSIGNMENT` branch and `<project>/.worktrees/ASSIGNMENT` checkout from committed HEAD or `--base COMMIT`. ASSIGNMENT is a unique delegation name, such as `vehicles-lite-01`, not a PBI ID. The same subagent may work on 2-4 similar, lightweight PBIs in one worktree; the CLI does not limit a group to one PBI. The orchestrator records IDs and ownership, claims/finishes each separately, and respects canonical dependencies. One agent owns the group's checkout. The command idempotently adds `.worktrees/*` to `.gitignore` and verifies exclusion. It does not automatically commit that change; the orchestrator explicitly includes it in an infrastructure commit or the first appropriate PBI commit.
 
-Crearea nu copiaza modificarile necomise, fisierele untracked, dependentele instalate sau configuratia locala. Nu considera prerequisite satisfacute daca exista doar in checkout-ul murdar al parintelui. Boardul canonic ramane cel al orchestratorului, nu copia istorica din worktree-ul copilului. Citeste PBI-ul si instructiunile actuale din caile canonice transmise in brief; implementeaza codul in worktree-ul copilului.
+Creation does not copy uncommitted changes, untracked files, installed dependencies, or local configuration. Prerequisites are not satisfied merely by existing in the parent's dirty checkout. The canonical board remains the orchestrator's board, not the historical copy in the child's worktree. Read the current PBI and instructions from canonical paths supplied in the brief; implement code in the child's worktree.
 
-Un worktree subdirector poate fi accesibil copilului, dar accesul nu schimba cwd-ul/binding-ul threadului. Cand toolurile copilului accepta `cwd`/`workdir` explicit, instruieste-l sa foloseasca pentru fiecare operatie calea absoluta a worktree-ului si sa verifice `git rev-parse --show-toplevel` si branchul inainte de editare. Nu depinde de un `cd` care ar trebui sa persiste intre tool calls. Daca runtime-ul nu permite operatii explicite in acel checkout, foloseste checkout-ul comun cu ownership; nu simula izolarea prin threaduri top-level necerute.
+A subdirectory worktree may be accessible to the child, but access does not change cwd or thread binding. When child tools accept explicit `cwd`/`workdir`, require the absolute worktree path for every operation and verification of `git rev-parse --show-toplevel` and the branch before editing. Do not depend on a `cd` persisting across tool calls. If the runtime does not support explicit operations in that checkout, use shared-checkout ownership; do not simulate isolation with unrequested top-level threads.
 
-Copilul poate face commituri de implementare numai in worktree-ul propriu si numai daca brief-ul autorizeaza asta; nu modifica boardul canonic si nu face push. Pentru un grup livreaza commituri, dovezi si rezultate distincte per PBI. Parintele integreaza serial pana la commitul PBI-ului disponibil, in ordinea branchului, verifica codul integrat, finalizeaza acel PBI, face commitul final si push, apoi trece la urmatorul. Nu integra varful branchului daca amesteca rezultate neverificate. Preferi merge fara rescriere de istoric pentru a pastra ancestry si provenienta, conform regulilor proiectului. Inspecteaza staged/unstaged in parinte inainte de merge; nu folosi stash/reset automat peste munca altora. Rezolva conflictele pe baza contractelor, nu alegand mecanic ours/theirs.
+The child may create implementation commits only in its own worktree and only when the brief authorizes them; it does not edit the canonical board or push. For a group, deliver distinct commits, evidence, and results per PBI. The parent integrates serially up to the available PBI's commit, in branch order, verifies integrated code, completes that PBI, makes its final commit and push, then proceeds to the next. Do not integrate a branch tip containing unverified results. Prefer merges without history rewriting to preserve ancestry and provenance, according to project rules. Inspect the parent's staged/unstaged changes before merging; do not automatically stash/reset others' work. Resolve conflicts through contracts, not mechanical ours/theirs selection.
 
-`worktree remove ASSIGNMENT` refuza worktree-uri murdare si HEAD-uri care nu sunt stramosi ai HEAD-ului parintelui. Nu foloseste force si pastreaza branchul. Pentru checkout-uri create de versiunea veche, accepta si vechea amplasare `.worktrees/pbi-ASSIGNMENT` daca amplasarea noua nu exista. Dupa cherry-pick, ancestry poate lipsi chiar daca patchul este prezent: refuzul este intentionat; inspecteaza separat inainte de cleanup manual. Nu elimina worktree-ul cat timp agentul care il foloseste este activ sau mai exista rezultate PBI ale grupului neintegrate.
+`worktree remove ASSIGNMENT` refuses dirty worktrees and HEADs that are not ancestors of the parent's HEAD. It does not use force and retains the branch. For checkouts created by the previous version, it also accepts the old `.worktrees/pbi-ASSIGNMENT` location when the new location is absent. After cherry-pick, ancestry may be missing even when the patch is present: refusal is intentional; inspect separately before manual cleanup. Do not remove a worktree while its agent is active or group PBI results remain unintegrated.
 
-### Cleanup dupa livrarea delegarii
+### Cleanup after delegation delivery
 
-Orchestratorul ruleaza cleanup dupa fiecare grup livrat: agent inactiv, procesele proprii oprite, dovezi pastrate in proiect, toate PBI-urile integrate/validate/comise si push-ul autorizat reusit. `worktree remove` este intentionat o comanda de nivel jos: verifica checkout-ul si ancestry, dar nu cunoaste agentii activi, boardul sau destinatia push-ului; orchestratorul verifica aceste preconditii.
+The orchestrator cleans up after every delivered group: the agent is inactive, its own processes are stopped, evidence is preserved in the project, all PBIs are integrated/validated/committed, and authorized push succeeded. `worktree remove` is deliberately a low-level command: it checks the checkout and ancestry but does not know active agents, the board, or the push destination; the orchestrator checks these preconditions.
 
 ```text
-bun "<skill>/scripts/loop-pbi.ts" worktree remove vehicles-lite-01 --root "<proiect>"
-git -C "<proiect>" merge-base --is-ancestor loop-pbi/vehicles-lite-01 HEAD
-git -C "<proiect>" branch -d -- loop-pbi/vehicles-lite-01
-git -C "<proiect>" worktree list
+bun "<skill>/scripts/loop-pbi.ts" worktree remove vehicles-lite-01 --root "<project>"
+git -C "<project>" merge-base --is-ancestor loop-pbi/vehicles-lite-01 HEAD
+git -C "<project>" branch -d -- loop-pbi/vehicles-lite-01
+git -C "<project>" worktree list
 ```
 
-Executa sequential si inspecteaza fiecare rezultat: `branch -d` numai dupa succesul remove, dupa verificarea ancestry si dupa confirmarea ca branchul nu este folosit de alt worktree. Nu forta cu `-D` daca Git refuza. Lista finala si verificarea diskului confirma eliminarea checkout-ului. Nu sterge implicit branchuri remote, alte worktree-uri sau radacina `.worktrees`. Regula din .gitignore ramane pentru urmatoarele delegari.
+Execute sequentially and inspect each result: `branch -d` only after successful removal, ancestry verification, and confirmation that no other worktree uses the branch. Do not force with `-D` if Git refuses. The final list and disk check confirm checkout removal. Do not delete remote branches, other worktrees, or the `.worktrees` root by default. The .gitignore rule remains for future delegations.
 
-Daca remove/branch delete esueaza, pastreaza locatia, branchul si motivul in evidenta. Continua alte task-uri si reincearca numai dupa rezolvarea cauzei. Nu pierde implementari nelivrate ca sa termini cleanup-ul. Un branch sters dupa integrare nu sterge istoricul PBI-urilor: commiturile sunt accesibile prin branchul parintelui. Pentru reluare idempotenta, inspecteaza mai intai `worktree list` si `git branch --list`; o locatie deja eliminata nu necesita remove din nou.
+If removal/branch deletion fails, retain the location, branch, and reason in the working record. Continue other tasks and retry only after resolving the cause. Do not lose undelivered implementations to finish cleanup. Deleting an integrated branch does not delete PBI history: commits remain accessible through the parent's branch. For idempotent resumption, first inspect `worktree list` and `git branch --list`; a location already removed does not need another removal.
 
-## Istoric Git ca baza de schimbari
+## Git history as a change record
 
-Citeste [git-history.md](git-history.md) pentru commit trailers, query-uri si recuperarea livrarilor. `history ID` cauta exact trailerul `PBI: ID` in branchul curent, fara interpretarea ID-ului ca regex. `history` fara ID listeaza ultimele 50 commituri, ajustabil prin `--limit`. Commiturile vechi fara trailer se cauta prin Git folosind numele taskului, mesajul sau fisierele; CLI-ul nu le ghiceste si nu le modifica.
+Read [git-history.md](git-history.md) for commit trailers, queries, and delivery recovery. `history ID` matches the exact `PBI: ID` trailer on the current branch without treating the ID as a regular expression. Without an ID, `history` lists the latest 50 commits, adjustable through `--limit`. Find older commits without trailers through Git using task names, messages, or files; the CLI does not guess or rewrite them.
 
-Testele helperului ruleaza cu `bun test "<skill>/scripts/loop-pbi.test.ts"`, in repos temporare, fara mutatii in proiectul curent.
+Run helper tests with `bun test "<skill>/scripts/loop-pbi.test.ts"`; they use temporary repositories without mutating the current project.
