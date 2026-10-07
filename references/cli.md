@@ -7,6 +7,7 @@ The helper is `../scripts/loop-pbi.ts`, relative to this file. Run:
 ```text
 bun "<skill>/scripts/loop-pbi.ts" --help
 bun "<skill>/scripts/loop-pbi.ts" scan --root "<project>"
+bun "<skill>/scripts/loop-pbi.ts" overview --root "<project>"
 bun "<skill>/scripts/loop-pbi.ts" ready --root "<project>"
 bun "<skill>/scripts/loop-pbi.ts" validate --root "<project>"
 bun "<skill>/scripts/loop-pbi.ts" claim 023 --agent "agent-023" --root "<project>"
@@ -111,3 +112,29 @@ If removal/branch deletion fails, retain the location, branch, and reason in the
 Read [git-history.md](git-history.md) for commit trailers, queries, and delivery recovery. `history ID` matches the exact `PBI: ID` trailer on the current branch without treating the ID as a regular expression. Without an ID, `history` lists the latest 50 commits, adjustable through `--limit`. Find older commits without trailers through Git using task names, messages, or files; the CLI does not guess or rewrite them.
 
 Run helper tests with `bun test "<skill>/scripts/loop-pbi.test.ts"`; they use temporary repositories without mutating the current project.
+
+## Generated progress overview
+
+`overview` validates the board and writes a Markdown table at the very beginning of the overview, before its title. Destination priority is `--overview FILE` (project-relative), `overview.file` in configuration, then a uniquely named README.md (case-insensitive) directly in the discovered board. A missing configured destination is created; ambiguous discovery requires an explicit destination. Paths stay inside the project and outside task columns. Read-only commands do not rewrite the overview.
+
+Configure the discovered destination to enable automatic refresh after successful `claim` and `finish` transitions:
+
+```json
+{
+  "board": "tasks",
+  "overview": {
+    "file": "tasks/INDEX.md",
+    "moduleField": "component",
+    "phaseField": "implementation_stage",
+    "modules": { "023": "Payments", "024": "Payments" }
+  }
+}
+```
+
+`moduleField` and `phaseField` default to `module` and `phase`, accepting the helper's scalar frontmatter syntax. Optional `modules` maps task IDs to module names and overrides the module field; use it when the project expresses module membership through directories or other conventions. The skill resolves these associations; the CLI does not guess them from titles. Unmapped tasks without module metadata appear as `Unassigned`. Remaining phases list distinct phase values on unfinished tasks; completed modules show `Completed`. Counts cover the entire selected board, even when the current implementation request targets only part of it.
+
+The percentage is rounded `Done / total * 100`, capped at 99% until all tasks are Done. Each filled segment represents a completed tenth; the bar reaches ten filled segments only when every task is Done. An empty board shows a zero total and 0%. Tasks count equally. No partial credit is inferred from an In Progress status or checklist. Markdown characters in labels are escaped.
+
+The generated section is bounded by `<!-- loop-pbi:progress:start -->` and `<!-- loop-pbi:progress:end -->`. Regeneration replaces that section, moves it to the top if necessary, and preserves other content (apart from leading blank lines/BOM). Repeated runs are idempotent. Malformed/duplicate markers, YAML frontmatter in the overview, or an invalid board cause an error rather than destructive replacement. Updates use the board transition lock and atomic writes. Failed post-move checks leave the previous table intact while the task returns to In Progress; external hooks still retain their documented rollback limitations.
+
+Run `overview` after manual edits/additions/removals or changing module assignments, at resumption, and before committing. It runs no project commands and needs no `--allow-project-commands`. Include the overview in the task's integration commit. Projects without `overview` configured retain the previous CLI transition behavior; the skill must discover and configure their overview to enable refresh.

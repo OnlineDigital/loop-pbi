@@ -66,6 +66,10 @@ bun test scripts/loop-pbi.test.ts
 
 Tests use isolated temporary repositories, covering dependency validation, concurrent claims, physical transitions, failed-validation rollback, shared worktrees for multiple PBIs, cleanup protections, and refusal to execute project commands without explicit opt-in.
 
+## Progress overview
+
+The skill discovers the project's existing backlog overview and keeps a module progress table as its first visible content, before any title. The Bun helper calculates Done/total counts and Markdown bars; configured `claim`/`finish` transitions refresh it automatically. Run `overview` to refresh after manual board edits. Custom overview paths, module fields, phase fields, and task-to-module mappings are documented in [the CLI reference](references/cli.md#generated-progress-overview).
+
 ## Discoverability on skills.sh
 
 [The official FAQ](https://skills.sh/docs/faq) explains that skills are listed through installation telemetry from the `skills` CLI. Public GitHub availability and installability are immediate; leaderboard indexing is controlled by skills.sh and may not be immediate.

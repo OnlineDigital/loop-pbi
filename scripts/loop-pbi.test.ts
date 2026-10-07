@@ -215,3 +215,79 @@ test('unconfigured executable files in the board are not automatically run', () 
   writeFileSync(join(f.board, 'unexpected-validator.sh'), 'exit 99');
   expect((main(['validate', '--root', f.root]) as any).checks).toEqual([]);
 });
+
+
+function metadata(file: string, values: Record<string, string>) {
+  writeFileSync(file, readFileSync(file, 'utf8').replace('---\n\n#', Object.entries(values).map(([k, v]) => `${k}: ${JSON.stringify(v)}\n`).join('') + '---\n\n#'));
+}
+
+test('overview computes module counts and weighted total, escapes labels, preserves body and is idempotent', () => {
+  const f = fixture(['To Do', 'In Progress', 'Done']);
+  metadata(task(f, '001', 2), { component: 'API|Core' });
+  metadata(task(f, '002', 1), { component: 'API|Core', stage: 'Build' });
+  metadata(task(f, '003'), { component: 'API|Core', stage: 'Test' });
+  task(f, '004', 2);
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ overview: { file: 'docs/tasks/INDEX.md', moduleField: 'component', phaseField: 'stage', modules: { '004': 'UI' } } }));
+  const result = call(f.root, 'overview');
+  const content = readFileSync(result.file, 'utf8');
+  expect(content).toContain('| API&#124;Core | Build, Test | 1 | 1 | 1 / 3 |');
+  expect(content).toContain('| UI | Completed | 0 | 0 | 1 / 1 |');
+  expect(content).toContain('| Total | - | 1 | 1 | 2 / 4 |');
+  expect(content).toContain('33%'); expect(content).toContain('50%');
+  expect(content).toContain(String.fromCharCode(0x2588));
+  writeFileSync(result.file, '# Existing overview\r\n\r\nKeep this exact body.\r\n' + content.replaceAll('\n', '\r\n'));
+  call(f.root, 'overview');
+  const moved = readFileSync(result.file, 'utf8');
+  expect(moved.startsWith('<!-- loop-pbi:progress:start -->\r\n')).toBe(true);
+  expect(moved).toContain('# Existing overview\r\n\r\nKeep this exact body.\r\n');
+  expect(call(f.root, 'overview').changed).toBe(false);
+  expect(readFileSync(result.file, 'utf8')).toBe(moved);
+});
+
+test('configured transitions refresh counts and failed validation preserves previous overview', () => {
+  const f = fixture(); task(f, '001');
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ overview: { file: 'pbis/README.md' } }));
+  call(f.root, 'overview');
+  call(f.root, 'claim', '001', '--agent', 'a');
+  const file = join(f.board, 'README.md'), before = readFileSync(file, 'utf8');
+  expect(before).toContain('| Unassigned | - | 0 | 1 | 0 / 1 |');
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ overview: { file: 'pbis/README.md' }, requireDone: [[bin, '-e', 'process.exit(4)']] }));
+  expect(() => call(f.root, 'finish', '001', '--evidence', evidence(f.root, '001'))).toThrow('Command failed');
+  expect(readFileSync(file, 'utf8')).toBe(before);
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ overview: { file: 'pbis/README.md' } }));
+  call(f.root, 'finish', '001', '--evidence', evidence(f.root, '001'));
+  expect(readFileSync(file, 'utf8')).toContain('| Unassigned | Completed | 0 | 0 | 1 / 1 |');
+  expect(readFileSync(file, 'utf8')).toContain('100%');
+});
+
+test('overview discovers README case, handles empty boards and rejects destructive destinations or malformed blocks', () => {
+  const f = fixture(); const file = join(f.board, 'Readme.md');
+  writeFileSync(file, '# Board\n'); call(f.root, 'overview');
+  expect(readFileSync(file, 'utf8')).toContain('| Total | - | 0 | 0 | 0 / 0 |');
+  expect(readFileSync(file, 'utf8')).toContain('0%');
+  for (const bad of ['<!-- loop-pbi:progress:start -->\n# Board', '---\ntitle: Board\n---\n# Board']) {
+    writeFileSync(file, bad);
+    expect(() => call(f.root, 'overview')).toThrow();
+    expect(readFileSync(file, 'utf8')).toBe(bad);
+  }
+  expect(() => call(f.root, 'overview', '--overview', '../escape.md')).toThrow('escapes root');
+  const source = task(f, '001');
+  expect(() => call(f.root, 'overview', '--overview', 'pbis/todo/001-task.md')).toThrow('outside task columns');
+  expect(readFileSync(source, 'utf8')).toContain('id: "001"');
+  writeFileSync(file, '# Board\n');
+  task(f, '001', 2);
+  expect(() => call(f.root, 'overview')).toThrow('Duplicate ID');
+  expect(readFileSync(file, 'utf8')).toBe('# Board\n');
+});
+
+
+test('overview failure rolls transition back without altering the source document', () => {
+  const f = fixture(); task(f, '001');
+  const file = join(f.board, 'README.md');
+  const bad = '<!-- loop-pbi:progress:end -->\n# Keep me';
+  writeFileSync(file, bad);
+  writeFileSync(join(f.root, '.loop-pbi.json'), JSON.stringify({ overview: { file: 'pbis/README.md' } }));
+  expect(() => call(f.root, 'claim', '001', '--agent', 'a')).toThrow('Malformed');
+  expect(call(f.root, 'scan').tasks[0].column).toBe('todo');
+  expect(readFileSync(file, 'utf8')).toBe(bad);
+});

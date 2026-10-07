@@ -5,6 +5,7 @@ import { resolve, join, relative, dirname, basename, sep, isAbsolute } from 'nod
 // No package dependencies. Git and configured project validators remain external tools.
 type Column = 'todo' | 'progress' | 'done';
 type Config = {
+  overview?: { file: string; moduleField?: string; phaseField?: string; modules?: Record<string, string> };
   board?: string; columns?: Partial<Record<Column, string>>;
   fields?: Partial<Record<'id' | 'status' | 'dependencies' | 'owner' | 'started' | 'completed', string>>;
   statuses?: Partial<Record<Column, string>>;
@@ -148,6 +149,52 @@ class Board {
   }
   valid() { const result = this.validate(); if (result.errors.length) fail(result.errors.join('\n')); return result.tasks; }
   task(id: string) { const t = this.valid().find(t => t.id === id); return t || fail(`Unknown ID: ${id}`); }
+  overview(fileOverride?: string) {
+    const settings = this.config.overview;
+    const candidates = readdirSync(this.board).filter(n => /^README\.md$/i.test(n));
+    const file = inside(this.root, fileOverride || settings?.file ||
+      (candidates.length === 1 ? join(this.board, candidates[0]) : fail('Cannot resolve overview; configure overview.file or pass --overview FILE')));
+    if (Object.values(this.paths).some(p => file === p || file.startsWith(p + sep))) fail('Overview must be outside task columns');
+    const tasks = this.valid();
+    if (tasks.some(t => t.file === file)) fail('Overview cannot overwrite a task');
+    const original = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    const newline = original.includes('\r\n') ? '\r\n' : '\n';
+    const start = '<!-- loop-pbi:progress:start -->', end = '<!-- loop-pbi:progress:end -->';
+    const starts = original.split(start).length - 1, ends = original.split(end).length - 1;
+    if (starts !== ends || starts > 1 || (starts && original.indexOf(end) < original.indexOf(start))) fail('Malformed overview progress markers');
+    let body = starts ? original.slice(0, original.indexOf(start)) + original.slice(original.indexOf(end) + end.length) : original;
+    body = body.replace(/^\uFEFF/, '').replace(/^(?:[ \t]*\r?\n)+/, '');
+    if (/^---\r?\n/.test(body)) fail('Overview has YAML frontmatter; select a Markdown overview without frontmatter before prepending the table');
+    const groups = new Map<string, { todo: number; progress: number; done: number; phases: Set<string> }>();
+    for (const t of tasks) {
+      const fm = frontmatter(readFileSync(t.file, 'utf8'));
+      const raw = fm.values.get(settings?.moduleField || 'module');
+      const module = (settings?.modules && Object.hasOwn(settings.modules, t.id) ? settings.modules[t.id] : undefined) ?? (raw && raw !== 'null' ? scalar(raw, 'module') : 'Unassigned');
+      const group = groups.get(module) || { todo: 0, progress: 0, done: 0, phases: new Set<string>() };
+      group[t.column]++;
+      const phase = fm.values.get(settings?.phaseField || 'phase');
+      if (t.column !== 'done' && phase && phase !== 'null') group.phases.add(scalar(phase, 'phase'));
+      groups.set(module, group);
+    }
+    const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('|', '&#124;').replaceAll('`', '&#96;').replace(/[\r\n]/g, ' ');
+    const row = (name: string, g: { todo: number; progress: number; done: number; phases?: Set<string> }) => {
+      const total = g.todo + g.progress + g.done, percent = total ? (g.done === total ? 100 : Math.min(99, Math.round(g.done / total * 100))) : 0;
+      // Only a completed module receives a fully filled bar.
+      const filled = total && g.done === total ? 10 : Math.floor(total ? g.done / total * 10 : 0);
+      const phase = g.phases?.size ? [...g.phases].sort().map(escape).join(', ') : total && g.done === total ? 'Completed' : '-';
+      return `| ${escape(name)} | ${phase} | ${g.todo} | ${g.progress} | ${g.done} / ${total} | \`${'█'.repeat(filled)}${'░'.repeat(10 - filled)}\` ${percent}% |`;
+    };
+    const totals = { todo: 0, progress: 0, done: 0 };
+    const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([name, g]) => {
+      for (const col of ['todo', 'progress', 'done'] as Column[]) totals[col] += g[col];
+      return row(name, g);
+    });
+    const table = [start, '| Module | Remaining phases | To Do | In Progress | Done / Total | Progress |',
+      '|---|---|---:|---:|---:|---|', ...rows, row('Total', totals), end].join(newline);
+    const content = table + newline + newline + body;
+    if (content !== original) { mkdirSync(dirname(file), { recursive: true }); atomicWrite(file, content); }
+    return { file, modules: groups.size, tasks: tasks.length, changed: content !== original };
+  }
   commands(commands: string[][] | undefined, id = '', file = '') {
     if (commands?.length && !this.allowProjectCommands) fail('Project-defined commands are disabled. Review all configuration/evidence commands, then explicitly pass --allow-project-commands.');
     return (commands || []).map(argv => run(this.root, argv.map(s => s.replaceAll('{id}', id).replaceAll('{file}', file))));
@@ -175,7 +222,8 @@ class Board {
       try {
         if (existsSync(t.file) || !existsSync(dest)) fail('Physical transition failed');
         this.valid(); const result = verify(dest);
-        return { id, from: t.file, to: dest, result };
+        const overview = this.config.overview ? this.overview() : undefined;
+        return { id, from: t.file, to: dest, result, overview };
       } catch (err) {
         // Preserve any new body/evidence written by afterMove, but restore lifecycle metadata.
         const current = frontmatter(readFileSync(dest, 'utf8')), before = frontmatter(original);
@@ -197,14 +245,14 @@ function parse(argv: string[]) {
       if (opts[key]) fail(`Repeated option --${key}`); opts[key] = argv[++i];
     } else args.push(argv[i]);
   }
-  const known = ['root', 'config', 'board', 'agent', 'evidence', 'base', 'limit', 'help', 'allow-project-commands'];
+  const known = ['root', 'config', 'board', 'agent', 'evidence', 'base', 'limit', 'help', 'allow-project-commands', 'overview'];
   for (const key of Object.keys(opts)) if (!known.includes(key)) fail(`Unknown option --${key}`);
   return { opts, args };
 }
 const help = `loop-pbi: Bun-only CLI (Git required for worktrees/history)
 Usage: bun loop-pbi.ts COMMAND [ID] --root PROJECT [--config FILE] [--board PATH]
 Read-only: scan | ready | validate | history [ID] [--limit 50] | worktree list
-Mutations: claim ID --agent NAME | finish ID --evidence JSON_FILE
+Mutations: overview [--overview FILE] | claim ID --agent NAME | finish ID --evidence JSON_FILE
            worktree create ASSIGNMENT [--base COMMIT] | worktree remove ASSIGNMENT
 Config: optional PROJECT/.loop-pbi.json. See references/cli.md.
 Project-defined commands require review and explicit --allow-project-commands; no validator scripts are autodetected.
@@ -224,7 +272,7 @@ export function main(argv: string[]) {
   const configFile = inside(root, opts.config || '.loop-pbi.json');
   if (opts.config && !existsSync(configFile)) fail(`Config missing: ${configFile}`);
   const config: Config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8').replace(/^\uFEFF/, '')) : {};
-  const allowed = ['board', 'columns', 'fields', 'statuses', 'dependencies', 'validate', 'requireDone', 'afterMove'];
+  const allowed = ['board', 'columns', 'fields', 'statuses', 'dependencies', 'validate', 'requireDone', 'afterMove', 'overview'];
   if (!config || Array.isArray(config) || typeof config !== 'object' || Object.keys(config).some(k => !allowed.includes(k))) fail('Invalid or unknown configuration keys');
   for (const k of ['validate', 'requireDone', 'afterMove'] as const) {
     if (config[k] && (!Array.isArray(config[k]) || config[k]!.some(a => !Array.isArray(a) || !a.length || a.some(s => typeof s !== 'string')))) fail(`Invalid command arrays: ${k}`);
@@ -237,6 +285,14 @@ export function main(argv: string[]) {
       fail(`Invalid configuration: ${key}`);
   }
   if (config.fields && Object.values(config.fields).some(s => !/^[\w-]+$/.test(s!))) fail('Field names must be simple YAML keys');
+  if (config.overview !== undefined) {
+    const o = config.overview;
+    if (!o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some(k => !['file', 'moduleField', 'phaseField', 'modules'].includes(k)) ||
+        typeof o.file !== 'string' || !o.file.trim()) fail('Invalid overview configuration');
+    for (const k of ['moduleField', 'phaseField'] as const) if (o[k] !== undefined && (typeof o[k] !== 'string' || !/^[\w-]+$/.test(o[k]!))) fail(`Invalid overview ${k}`);
+    if (o.modules !== undefined && (!o.modules || typeof o.modules !== 'object' || Array.isArray(o.modules) ||
+        Object.values(o.modules).some(v => typeof v !== 'string' || !v.trim()))) fail('Invalid overview modules');
+  }
   if (command === 'history') {
     const id = args[1]; const limit = Number(opts.limit || 50);
     if (!Number.isInteger(limit) || limit < 1 || limit > 10000) fail('limit must be 1..10000');
@@ -288,6 +344,7 @@ export function main(argv: string[]) {
     fail('Use worktree create ASSIGNMENT, list, or remove ASSIGNMENT');
   }
   const board = new Board(root, config, opts.board, opts['allow-project-commands'] === 'true');
+  if (command === 'overview') return board.lock(() => board.overview(opts.overview));
   if (command === 'scan') return { root, board: board.board, columns: board.paths, ...board.validate() };
   if (command === 'validate') {
     const tasks = board.valid(); const checks = board.external(); return { valid: true, count: tasks.length, checks };
